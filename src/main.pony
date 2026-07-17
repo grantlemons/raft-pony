@@ -10,5 +10,6 @@ actor Main
       nd
     end
     for node in nodes.values() do
-      node.set_nodes(nodes)
+      //node.set_nodes(nodes)
+      None
     end
