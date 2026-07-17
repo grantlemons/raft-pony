@@ -5,7 +5,7 @@ type Term is USize
 type LogIndex is USize
 type Votes is U16
 trait NodeState[A: Any val]
-  fun tag append(
+  fun ref append(
     node: RaftNode[A] ref, 
     leader: RaftNode[A] tag,
     term: Term,
@@ -52,7 +52,7 @@ trait NodeState[A: Any val]
 
     leader.append_reply(current_term, true)
 
-  fun tag request_vote(
+  fun ref request_vote(
     node: RaftNode[A] ref!, 
     candidate: RaftNode[A] tag,
     term: Term,
@@ -74,5 +74,5 @@ trait NodeState[A: Any val]
       candidate.vote_reply(current_term, false)
     end
 
-  fun tag append_reply(term: Term, success: Bool)
-  fun tag vote_reply(term: Term, vote_granted: Bool)
+  fun ref append_reply(term: Term, success: Bool)
+  fun ref vote_reply(term: Term, vote_granted: Bool)

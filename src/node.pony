@@ -1,27 +1,39 @@
 use "time"
 use "random"
 use "debug"
+use "itertools"
 
 class LeaderState[A: Any val] is NodeState[A]
-  let _followers: Array[RaftNode[A] tag] ref = []
-  let _follower_next_indexes: Array[LogIndex ref] ref = []
-  let _follower_match_indexes: Array[LogIndex ref] ref = []
+  let _followers: Array[RaftNode[A] tag] ref
+  let _follower_next_indexes: Array[LogIndex val] ref
+  let _follower_match_indexes: Array[LogIndex val] ref
 
-  fun tag append_reply(term: Term, success: Bool) =>
+  new create(parent: RaftNode[A] ref, nodes: Array[RaftNode[A] tag] val) =>
+    _followers = Iter[RaftNode[A] tag](nodes.values())
+      .filter({(node: RaftNode[A] tag) => not (node is parent)})
+      .collect(Array[RaftNode[A] tag])
+    _follower_next_indexes = Iter[RaftNode[A] tag](_followers.values())
+      .map[LogIndex val]({(node: RaftNode[A] tag) => parent._get_last_log_idx() + 1})
+      .collect(Array[LogIndex val])
+    _follower_match_indexes = Iter[RaftNode[A] tag](_followers.values())
+      .map[LogIndex val]({(node: RaftNode[A] tag) => 0})
+      .collect(Array[LogIndex val])
+
+  fun ref append_reply(term: Term, success: Bool) =>
     None
-  fun tag vote_reply(term: Term, vote_granted: Bool) =>
+  fun ref vote_reply(term: Term, vote_granted: Bool) =>
     None
 
 class CandidateState[A: Any val] is NodeState[A]
-  fun tag append_reply(term: Term, success: Bool) =>
+  fun ref append_reply(term: Term, success: Bool) =>
     None
-  fun tag vote_reply(term: Term, vote_granted: Bool) =>
+  fun ref vote_reply(term: Term, vote_granted: Bool) =>
     None
 
 class FollowerState[A: Any val] is NodeState[A]
-  fun tag append_reply(term: Term, success: Bool) =>
+  fun ref append_reply(term: Term, success: Bool) =>
     None
-  fun tag vote_reply(term: Term, vote_granted: Bool) =>
+  fun ref vote_reply(term: Term, vote_granted: Bool) =>
     None
 
 actor RaftNode[A: Any val]
@@ -73,3 +85,36 @@ actor RaftNode[A: Any val]
 
   be append_reply(term: Term, success: Bool) => _state.append_reply(term, success)
   be vote_reply(term: Term, vote_granted: Bool) => _state.vote_reply(term, vote_granted)
+
+  fun ref append(
+    leader: RaftNode[A] tag,
+    term: Term,
+    prev_log_index: LogIndex,
+    prev_log_term: Term,
+    entries: Array[A] val,
+    leader_commit_index: LogIndex
+  ) =>
+    _state.append(
+      this,
+      leader,
+      term,
+      prev_log_index,
+      prev_log_term,
+      entries,
+      leader_commit_index
+    )
+
+
+  fun ref request_vote(
+    candidate: RaftNode[A] tag,
+    term: Term,
+    last_log_index: LogIndex,
+    last_log_term: Term
+  ) =>
+    _state.request_vote(
+      this,
+      candidate,
+      term,
+      last_log_index,
+      last_log_term
+    )
