@@ -56,16 +56,24 @@ class LeaderState[A: Any val] is NodeState[A]
     )
 
   // If AppendEntries fails because of log inconsistency: decrement nextIndex and retry
-  fun ref append_reply(node: RaftNode[A] ref, follower_id: USize, term: Term, success: Bool) =>
+  fun ref append_reply(
+    node: RaftNode[A] ref,
+    follower_id: USize,
+    term: Term,
+    success: Bool,
+    match_index: LogIndex
+  ) =>
     try
-      (let follower: RaftNode[A] tag, let next_index: LogIndex, let match_index: LogIndex) = _followers(follower_id)?
+      (
+        let follower: RaftNode[A] tag,
+        let next_index: LogIndex,
+        let match_index': LogIndex
+      ) = _followers(follower_id)?
       if success then
-        None // TODO: Update nextIndex and matchIndex for follower
-        let new_next_idx: LogIndex = 0
-        let new_match_idx: LogIndex = 0
-        _followers.update(follower_id, (follower, new_next_idx, new_match_idx))?
+        None
+        _followers.update(follower_id, (follower, match_index + 1, match_index))?
       else
-        let new_follower_info = (follower, next_index - 1, match_index)
+        let new_follower_info = (follower, next_index - 1, match_index')
         _followers.update(follower_id, new_follower_info)?
         send_update(node, follower_id, new_follower_info)
       end
@@ -178,7 +186,7 @@ class FollowerState[A: Any val] is NodeState[A]
       node.commit_index = leader_commit_index.min(node.get_last_log_idx())
     end
 
-    leader.append_reply(follower_id, node.current_term, true)
+    leader.append_reply(follower_id, node.current_term, true, prev_log_index + entries.size())
 
   fun ref request_vote(
     node: RaftNode[A] ref,

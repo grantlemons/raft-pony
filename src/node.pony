@@ -62,9 +62,14 @@ actor RaftNode[A: Any val]
       apply_input(last_applied + 1)
     end
 
-  be append_reply(follower_id: USize, term: Term, success: Bool) =>
+  be append_reply(
+    follower_id: USize,
+    term: Term,
+    success: Bool,
+    match_index: LogIndex = -1
+  ) =>
     check_superceded(term)
-    state.append_reply(this, follower_id, term, success)
+    state.append_reply(this, follower_id, term, success, match_index)
     commit()
 
   be vote_reply(term: Term, vote_granted: Bool) =>

@@ -12,6 +12,7 @@ trait NodeState[A: Any val]
     entries: Array[A] val,
     leader_commit_index: LogIndex
   ) => None
+
   fun ref request_vote(
     node: RaftNode[A] ref, 
     candidate: RaftNode[A] tag,
@@ -19,5 +20,17 @@ trait NodeState[A: Any val]
     last_log_index: LogIndex,
     last_log_term: Term
   ) => None
-  fun ref append_reply(node: RaftNode[A] ref, follower_id: USize, term: Term, success: Bool) => None
-  fun ref vote_reply(node: RaftNode[A] ref, term: Term, vote_granted: Bool) => None
+
+  fun ref append_reply(
+    node: RaftNode[A] ref,
+    follower_id: USize,
+    term: Term,
+    success: Bool,
+    match_index: LogIndex
+  ) => None
+
+  fun ref vote_reply(
+    node: RaftNode[A] ref,
+    term: Term,
+    vote_granted: Bool
+  ) => None
