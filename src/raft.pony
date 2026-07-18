@@ -5,6 +5,7 @@ trait NodeState[A: Any val]
   fun ref append(
     node: RaftNode[A] ref, 
     leader: RaftNode[A] tag,
+    follower_id: USize,
     term: Term,
     prev_log_index: LogIndex,
     prev_log_term: Term,
@@ -18,5 +19,5 @@ trait NodeState[A: Any val]
     last_log_index: LogIndex,
     last_log_term: Term
   ) => None
-  fun ref append_reply(node: RaftNode[A] ref, term: Term, success: Bool) => None
+  fun ref append_reply(node: RaftNode[A] ref, follower_id: USize, term: Term, success: Bool) => None
   fun ref vote_reply(node: RaftNode[A] ref, term: Term, vote_granted: Bool) => None

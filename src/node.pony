@@ -62,9 +62,9 @@ actor RaftNode[A: Any val]
       apply_input(last_applied + 1)
     end
 
-  be append_reply(term: Term, success: Bool) =>
+  be append_reply(follower_id: USize, term: Term, success: Bool) =>
     check_superceded(term)
-    state.append_reply(this, term, success)
+    state.append_reply(this, follower_id, term, success)
     commit()
 
   be vote_reply(term: Term, vote_granted: Bool) =>
@@ -73,6 +73,7 @@ actor RaftNode[A: Any val]
 
   be append(
     leader: RaftNode[A] tag,
+    follower_id: USize,
     term: Term,
     prev_log_index: LogIndex,
     prev_log_term: Term,
@@ -80,7 +81,7 @@ actor RaftNode[A: Any val]
     leader_commit_index: LogIndex
   ) =>
     check_superceded(term)
-    state.append(this, leader, term, prev_log_index, prev_log_term, entries, leader_commit_index)
+    state.append(this, leader, follower_id, term, prev_log_index, prev_log_term, entries, leader_commit_index)
     commit()
 
   be request_vote(
