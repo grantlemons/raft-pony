@@ -73,7 +73,7 @@ class LeaderState[A: Any val] is NodeState[A]
         None
         _followers.update(follower_id, (follower, match_index + 1, match_index))?
       else
-        let new_follower_info = (follower, next_index - 1, match_index')
+        let new_follower_info = (follower, LogIndex.min_value().max(next_index - 1), match_index')
         _followers.update(follower_id, new_follower_info)?
         send_update(node, follower_id, new_follower_info)
       end
