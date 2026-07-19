@@ -15,7 +15,6 @@ actor RaftGateway[A: Any val]
     _leader = leader
     send_commands()
 
-  be process_commands(commands: Array[A] val) =>
+  be process_commands(commands: ReadSeq[A] val) =>
     _command_queue.append(commands)
-    Debug("Queueing " + commands.size().string() + " commands!")
     send_commands()

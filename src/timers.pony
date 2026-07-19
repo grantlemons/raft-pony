@@ -14,5 +14,5 @@ class HeartbeatHandler[A: Any val] is TimerNotify
   new iso create(parent: RaftNode[A] tag) => _parent = parent
 
   fun ref apply(timer: Timer ref, count: U64 val): Bool val =>
-    _parent.process_commands([])
+    _parent.process_commands(None)
     true

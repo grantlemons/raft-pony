@@ -9,7 +9,7 @@ trait NodeState[A: Any val]
     term: Term,
     prev_log_index: LogIndex,
     prev_log_term: Term,
-    entries: Array[A] val,
+    entries: (ReadSeq[A] val | None) = None,
     leader_commit_index: LogIndex
   ) => None
 
@@ -37,5 +37,5 @@ trait NodeState[A: Any val]
 
   fun ref process_commands(
     node: RaftNode[A] ref,
-    commands: Array[A] val = []
+    commands: (ReadSeq[A] val | None) = None
   ) => None

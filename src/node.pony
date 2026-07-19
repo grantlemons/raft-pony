@@ -32,7 +32,7 @@ actor RaftNode[A: Any val]
     _election_timer = timer
     _timers(consume timer)
 
-  be add_nodes(nodes': Array[RaftNode[A] tag] val) => nodes.append(nodes')
+  be add_nodes(nodes': ReadSeq[RaftNode[A] tag] val) => nodes.append(nodes')
 
   fun ref restart_election_timer() =>
     _timers.cancel(_election_timer)
@@ -71,8 +71,7 @@ actor RaftNode[A: Any val]
     Debug(name + ": Became candidate")
     state = CandidateState[A](this, nodes.values())
 
-  be process_commands(commands: Array[A] val) =>
-    Debug(name + ": Processing " + commands.size().string() + " commands!")
+  be process_commands(commands: (ReadSeq[A] val | None) = None) =>
     state.process_commands(this, commands)
 
   be append_reply(
@@ -87,7 +86,6 @@ actor RaftNode[A: Any val]
     commit()
 
   be vote_reply(term: Term, vote_granted: Bool) =>
-    Debug(name + ": Received vote: " + vote_granted.string())
     restart_election_timer()
     check_superceded(term)
     state.vote_reply(this, term, vote_granted)
@@ -98,7 +96,7 @@ actor RaftNode[A: Any val]
     term: Term,
     prev_log_index: LogIndex,
     prev_log_term: Term,
-    entries: Array[A] val,
+    entries: (Array[A] val | None),
     leader_commit_index: LogIndex
   ) =>
     restart_election_timer()
