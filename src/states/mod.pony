@@ -1,6 +1,5 @@
-type Term is USize
-type LogIndex is USize
-type Votes is USize
+use ".."
+
 trait NodeState[A: Any val]
   fun ref append(
     node: RaftNode[A] ref, 
@@ -39,3 +38,5 @@ trait NodeState[A: Any val]
     node: RaftNode[A] ref,
     commands: (ReadSeq[A] val | None) = None
   ) => None
+
+  fun ref dispose() => None

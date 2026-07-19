@@ -2,12 +2,13 @@ use "time"
 use "random"
 use "debug"
 use "itertools"
+use "states"
 
 actor RaftNode[A: Any val]
   let name: String val
   var state: NodeState[A] = FollowerState[A]
-  let gateway: RaftGateway[A]
-  let nodes: Array[RaftNode[A] tag] = []
+  let gateway: RaftCluster[A]
+  var nodes: Array[RaftNode[A] tag] val = []
 
   let _timers: Timers = Timers
   var _rand: Rand
@@ -22,7 +23,7 @@ actor RaftNode[A: Any val]
   var commit_index: LogIndex = 0
   var last_applied: LogIndex = 0
 
-  new create(gateway': RaftGateway[A], name': String val) =>
+  new create(gateway': RaftCluster[A], name': String val) =>
     gateway = gateway'
     name = name'
     _rand = Rand.from_u64(name'.hash64())
@@ -32,7 +33,12 @@ actor RaftNode[A: Any val]
     _election_timer = timer
     _timers(consume timer)
 
-  be add_nodes(nodes': ReadSeq[RaftNode[A] tag] val) => nodes.append(nodes')
+  be dispose() =>
+    state.dispose()
+    nodes = []
+    _timers.cancel(_election_timer)
+
+  be set_nodes(nodes': Array[RaftNode[A] tag] val) => nodes = nodes'
 
   fun ref restart_election_timer() =>
     _timers.cancel(_election_timer)
@@ -50,6 +56,7 @@ actor RaftNode[A: Any val]
   fun ref check_superceded(term: Term) =>
     if term > current_term then
       current_term = term
+      voted_for = None
       match state
       | let _: FollowerState[A] => None
       else
