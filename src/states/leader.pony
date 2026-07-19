@@ -1,23 +1,24 @@
 use ".."
 use "time"
 use "itertools"
+use "debug"
 
-class LeaderState[A: Any val] is NodeState[A]
-  let _followers: Array[(RaftNode[A] tag, LogIndex, LogIndex)] ref
+class LeaderState[A: Any val, M: StateMachine[A]] is NodeState[A, M]
+  let _followers: Array[(RaftNode[A, M] tag, LogIndex, LogIndex)] ref
   let _timers: Timers = Timers
   var _heartbeat_timer: Timer tag
 
   // Upon election: send initial empty AppendEntries RPCs (heartbeat) to each server
   // Repeat during idle periods to prevent election timeouts
-  new create(parent: RaftNode[A] ref, nodes: Iterator[RaftNode[A] tag] ref) =>
-    _followers = Iter[RaftNode[A] tag](nodes)
-      .filter({(node: RaftNode[A] tag) => not (node is parent)})
-      .map[(RaftNode[A] tag, LogIndex, LogIndex)]({
-        (node: RaftNode[A] tag) => (node, parent.get_last_log_idx() + 1, 0)
+  new create(parent: RaftNode[A, M] ref, nodes: Iterator[RaftNode[A, M] tag] ref) =>
+    _followers = Iter[RaftNode[A, M] tag](nodes)
+      .filter({(node: RaftNode[A, M] tag) => not (node is parent)})
+      .map[(RaftNode[A, M] tag, LogIndex, LogIndex)]({
+        (node: RaftNode[A, M] tag) => (node, parent.get_last_log_idx() + 1, 0)
       })
-      .collect(Array[(RaftNode[A] tag, LogIndex, LogIndex)])
+      .collect(Array[(RaftNode[A, M] tag, LogIndex, LogIndex)])
 
-    let timer: Timer iso = Timer(HeartbeatHandler[A](parent), 100_000_000, 100_000_000)
+    let timer: Timer iso = Timer(HeartbeatHandler[A, M](parent), 100_000_000, 100_000_000)
     _heartbeat_timer = timer
     _timers(consume timer)
 
@@ -27,15 +28,15 @@ class LeaderState[A: Any val] is NodeState[A]
   fun dispose() =>
     _timers.cancel(_heartbeat_timer)
 
-  fun ref restart_heartbeat_timer(node: RaftNode[A] ref) =>
+  fun ref restart_heartbeat_timer(node: RaftNode[A, M] ref) =>
     _timers.cancel(_heartbeat_timer)
-    let timer = Timer(HeartbeatHandler[A](node), 75_000_000, 75_000_000)
+    let timer = Timer(HeartbeatHandler[A, M](node), 75_000_000, 75_000_000)
     _heartbeat_timer = timer
     _timers(consume timer)
 
   // TODO: Respond after applying to state machine
   fun ref process_commands(
-    node: RaftNode[A] ref,
+    node: RaftNode[A, M] ref,
     commands: (ReadSeq[A] val | None) = None
   ) =>
     match commands
@@ -52,9 +53,9 @@ class LeaderState[A: Any val] is NodeState[A]
   // - If successful: update nextIndex and matchIndex for follower
   // - If AppendEntries fails because of log inconsistency: decrement nextIndex and retry
   fun ref _send_update(
-    node: RaftNode[A] ref,
+    node: RaftNode[A, M] ref,
     follower_id: USize,
-    follower_info: (RaftNode[A] tag, LogIndex, LogIndex)
+    follower_info: (RaftNode[A, M] tag, LogIndex, LogIndex)
   ) =>
     (let follower, let next_index, let match_index) = follower_info
 
@@ -85,15 +86,19 @@ class LeaderState[A: Any val] is NodeState[A]
 
   // If AppendEntries fails because of log inconsistency: decrement nextIndex and retry
   fun ref append_reply(
-    node: RaftNode[A] ref,
+    node: RaftNode[A, M] ref,
     follower_id: USize,
     term: Term,
     success: Bool,
     match_index: LogIndex
   ) =>
+    if node.rand.u8() == 0 then
+      Debug(node.name + ": Simulating dropped append reply")
+      return
+    end
     try
       (
-        let follower: RaftNode[A] tag,
+        let follower: RaftNode[A, M] tag,
         let next_index: LogIndex,
         let match_index': LogIndex
       ) = _followers(follower_id)?

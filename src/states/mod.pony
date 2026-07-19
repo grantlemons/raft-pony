@@ -1,9 +1,9 @@
 use ".."
 
-trait NodeState[A: Any val]
+trait NodeState[A: Any val, M: StateMachine[A]]
   fun ref append(
-    node: RaftNode[A] ref, 
-    leader: RaftNode[A] tag,
+    node: RaftNode[A, M] ref, 
+    leader: RaftNode[A, M] tag,
     follower_id: USize,
     term: Term,
     prev_log_index: LogIndex,
@@ -13,15 +13,15 @@ trait NodeState[A: Any val]
   ) => None
 
   fun ref request_vote(
-    node: RaftNode[A] ref, 
-    candidate: RaftNode[A] tag,
+    node: RaftNode[A, M] ref, 
+    candidate: RaftNode[A, M] tag,
     term: Term,
     last_log_index: LogIndex,
     last_log_term: Term
   ) => None
 
   fun ref append_reply(
-    node: RaftNode[A] ref,
+    node: RaftNode[A, M] ref,
     follower_id: USize,
     term: Term,
     success: Bool,
@@ -29,13 +29,13 @@ trait NodeState[A: Any val]
   ) => None
 
   fun ref vote_reply(
-    node: RaftNode[A] ref,
+    node: RaftNode[A, M] ref,
     term: Term,
     vote_granted: Bool
   ) => None
 
   fun ref process_commands(
-    node: RaftNode[A] ref,
+    node: RaftNode[A, M] ref,
     commands: (ReadSeq[A] val | None) = None
   ) => None
 

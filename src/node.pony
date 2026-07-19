@@ -4,14 +4,18 @@ use "debug"
 use "itertools"
 use "states"
 
-actor RaftNode[A: Any val]
+trait StateMachine[A: Any val]
+  new tag create()
+  be apply(input: A)
+
+actor RaftNode[A: Any val, M: StateMachine[A]]
   let name: String val
-  var state: NodeState[A] = FollowerState[A]
-  let gateway: RaftCluster[A]
-  var nodes: Array[RaftNode[A] tag] val = []
+  var state: NodeState[A, M] = FollowerState[A, M]
+  let gateway: RaftCluster[A, M]
+  var nodes: Array[RaftNode[A, M] tag] val = []
 
   let _timers: Timers = Timers
-  var _rand: Rand
+  var rand: Rand
   var _election_timer: Timer tag
 
   let log: Array[A] ref = []
@@ -19,17 +23,20 @@ actor RaftNode[A: Any val]
   let log_votes: Array[Votes val] ref = []
 
   var current_term: Term = 0
-  var voted_for: (RaftNode[A] tag | None) = None
+  var voted_for: (RaftNode[A, M] tag | None) = None
   var commit_index: LogIndex = 0
   var last_applied: LogIndex = 0
 
-  new create(gateway': RaftCluster[A], name': String val) =>
+  let _state_machine: StateMachine[A] tag
+
+  new create(gateway': RaftCluster[A, M], state_machine: StateMachine[A] tag, name': String val) =>
     gateway = gateway'
     name = name'
-    _rand = Rand.from_u64(name'.hash64())
+    rand = Rand.from_u64(name'.hash64())
+    _state_machine = state_machine
 
-    let timeout_ms = 150 + ((150 * U64.from[U8](_rand.u8())) / 255)
-    let timer: Timer iso = Timer(ElectionTimeoutHandler[A](this), timeout_ms * 1_000_000)
+    let timeout_ms = 150 + ((150 * U64.from[U8](rand.u8())) / 255)
+    let timer: Timer iso = Timer(ElectionTimeoutHandler[A, M](this), timeout_ms * 1_000_000)
     _election_timer = timer
     _timers(consume timer)
 
@@ -38,12 +45,12 @@ actor RaftNode[A: Any val]
     nodes = []
     _timers.cancel(_election_timer)
 
-  be set_nodes(nodes': Array[RaftNode[A] tag] val) => nodes = nodes'
+  be set_nodes(nodes': Array[RaftNode[A, M] tag] val) => nodes = nodes'
 
   fun ref restart_election_timer() =>
     _timers.cancel(_election_timer)
-    let timeout_ms = 150 + ((150 * U64.from[U8](_rand.u8())) / 255)
-    let timer = Timer(ElectionTimeoutHandler[A](this), timeout_ms * 1_000_000)
+    let timeout_ms = 150 + ((150 * U64.from[U8](rand.u8())) / 255)
+    let timer = Timer(ElectionTimeoutHandler[A, M](this), timeout_ms * 1_000_000)
     _election_timer = timer
     _timers(consume timer)
 
@@ -58,15 +65,19 @@ actor RaftNode[A: Any val]
       current_term = term
       voted_for = None
       match state
-      | let _: FollowerState[A] => None
+      | let _: FollowerState[A, M] => None
       else
-        state = FollowerState[A]
+        state = FollowerState[A, M]
       end
     end
 
   // Apply an input in the log to the managed state machine
   be apply_input(idx: LogIndex) =>
     last_applied = idx
+    try
+      _state_machine.apply(log(idx)?)
+    else Debug("Unable to apply to state machine!")
+    end
 
   // If commitIndex > lastApplied: increment lastApplied, apply log[lastApplied] to state machine
   be commit() =>
@@ -76,7 +87,7 @@ actor RaftNode[A: Any val]
 
   be become_candidate() =>
     Debug(name + ": Became candidate")
-    state = CandidateState[A](this, nodes.values())
+    state = CandidateState[A, M](this, nodes.values())
 
   be process_commands(commands: (ReadSeq[A] val | None) = None) =>
     state.process_commands(this, commands)
@@ -98,7 +109,7 @@ actor RaftNode[A: Any val]
     state.vote_reply(this, term, vote_granted)
 
   be append(
-    leader: RaftNode[A] tag,
+    leader: RaftNode[A, M] tag,
     follower_id: USize,
     term: Term,
     prev_log_index: LogIndex,
@@ -112,7 +123,7 @@ actor RaftNode[A: Any val]
     commit()
 
   be request_vote(
-    candidate: RaftNode[A] tag,
+    candidate: RaftNode[A, M] tag,
     term: Term,
     last_log_index: LogIndex,
     last_log_term: Term

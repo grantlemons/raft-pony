@@ -3,10 +3,10 @@ use "debug"
 use "collections"
 use "itertools"
 
-class FollowerState[A: Any val] is NodeState[A]
+class FollowerState[A: Any val, M: StateMachine[A]] is NodeState[A, M]
   fun ref append(
-    node: RaftNode[A] ref,
-    leader: RaftNode[A] tag,
+    node: RaftNode[A, M] ref,
+    leader: RaftNode[A, M] tag,
     follower_id: USize,
     term: Term,
     prev_log_index: LogIndex,
@@ -14,6 +14,10 @@ class FollowerState[A: Any val] is NodeState[A]
     entries': (ReadSeq[A] val | None),
     leader_commit_index: LogIndex
   ) =>
+    if node.rand.u8() == 0 then
+      Debug(node.name + ": Simulating dropped append message")
+      return
+    end
     if term < node.current_term then
       leader.append_reply(follower_id, node.current_term, false)
       return
@@ -61,12 +65,16 @@ class FollowerState[A: Any val] is NodeState[A]
     Debug(node.name + ": Success! #Entries: " + entries.size().string() + " New match: " + (prev_log_index + entries.size()).string())
 
   fun ref request_vote(
-    node: RaftNode[A] ref,
-    candidate: RaftNode[A] tag,
+    node: RaftNode[A, M] ref,
+    candidate: RaftNode[A, M] tag,
     term: Term,
     last_log_index: LogIndex,
     last_log_term: Term
   ) =>
+    if node.rand.u8() == 0 then
+      Debug(node.name + ": Simulating dropped vote message")
+      return
+    end
     if term < node.current_term then
       candidate.vote_reply(node.current_term, false)
       return

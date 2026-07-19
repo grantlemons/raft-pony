@@ -5,14 +5,14 @@ type Term is USize
 type LogIndex is USize
 type Votes is USize
 
-actor RaftCluster[A: Any val]
-  var _leader: (RaftNode[A] tag | None) = None
+actor RaftCluster[A: Any val, M: StateMachine[A]]
+  var _leader: (RaftNode[A, M] tag | None) = None
   var _command_queue: Array[A] iso = []
-  var _nodes: Array[RaftNode[A] tag] ref = []
+  var _nodes: Array[RaftNode[A, M] tag] ref = []
 
   new create(size: USize) =>
     for i in Range(0, size) do
-      _nodes.push(RaftNode[A](this, i.string()))
+      _nodes.push(RaftNode[A, M](this, M.create(), i.string()))
     end
     update_nodes()
 
@@ -23,11 +23,11 @@ actor RaftCluster[A: Any val]
     _nodes.clear()
 
   fun update_nodes() =>
-    let nodes: Array[RaftNode[A] tag] iso = nodes.create()
+    let nodes: Array[RaftNode[A, M] tag] iso = nodes.create()
     for node in _nodes.values() do
       nodes.push(node)
     end
-    let nodes': Array[RaftNode[A] tag] val = consume nodes
+    let nodes': Array[RaftNode[A, M] tag] val = consume nodes
     for node in nodes'.values() do
       node.set_nodes(nodes')
     end
@@ -37,7 +37,7 @@ actor RaftCluster[A: Any val]
       node.set_nodes([])
     end
     while size > _nodes.size() do
-      _nodes.push(RaftNode[A](this, _nodes.size().string()))
+      _nodes.push(RaftNode[A, M](this, M.create(), _nodes.size().string()))
     end
     if size == 0 then
       _leader = None
@@ -62,11 +62,11 @@ actor RaftCluster[A: Any val]
 
   fun ref send_commands() =>
     match _leader
-    | let leader: RaftNode[A] tag =>
+    | let leader: RaftNode[A, M] tag =>
         leader.process_commands(_command_queue = [])
     end
 
-  be set_leader(leader: RaftNode[A] tag) =>
+  be set_leader(leader: RaftNode[A, M] tag) =>
     _leader = leader
     send_commands()
 

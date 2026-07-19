@@ -1,13 +1,17 @@
 use "time"
 use "collections"
 use "itertools"
+use "debug"
+
+actor DummyStateMachine[A: Stringable val] is StateMachine[A]
+  new create() => None
+  be apply(input: A) => Debug("Input: " + input.string())
 
 actor Main
   new create(env: Env) =>
-    let cluster = RaftCluster[U64](50)
-    cluster.scale_to(10)
+    let cluster = RaftCluster[U64, DummyStateMachine[U64]](10)
 
-    let commands_per_sec = U64(50)
+    let commands_per_sec = U64(10)
     let timers = Timers
     timers(
       Timer(
