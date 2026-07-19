@@ -7,6 +7,8 @@ use "assert"
 
 class LeaderState[A: Any val] is NodeState[A]
   let _followers: Array[(RaftNode[A] tag, LogIndex, LogIndex)] ref
+  let _timers: Timers = Timers
+  var _heartbeat_timer: Timer tag
 
   // Upon election: send initial empty AppendEntries RPCs (heartbeat) to each server
   // Repeat during idle periods to prevent election timeouts
@@ -17,20 +19,31 @@ class LeaderState[A: Any val] is NodeState[A]
         (node: RaftNode[A] tag) => (node, parent.get_last_log_idx() + 1, 0)
       })
       .collect(Array[(RaftNode[A] tag, LogIndex, LogIndex)])
+
+    let timer: Timer iso = Timer(HeartbeatHandler[A](parent), 75_000_000, 75_000_000)
+    _heartbeat_timer = timer
+    _timers(consume timer)
+
     process_commands(parent)
+
+  fun ref restart_heartbeat_timer(node: RaftNode[A] ref) =>
+    _timers.cancel(_heartbeat_timer)
+    let timer = Timer(HeartbeatHandler[A](node), 75_000_000, 75_000_000)
+    _heartbeat_timer = timer
+    _timers(consume timer)
 
   // TODO: Respond after applying to state machine
   fun ref process_commands(node: RaftNode[A] ref, commands: Array[A] val = []) =>
-    node.log.concat(commands.values())
+    node.log.append(commands)
 
     for (follower_id, follower_info) in _followers.pairs() do
-      send_update(node, follower_id, follower_info)
+      _send_update(node, follower_id, follower_info)
     end
 
   // If last log index >= nextIndex for a follower: send AppendEntries RPC with log entries starting at nextIndex
   // - If successful: update nextIndex and matchIndex for follower
   // - If AppendEntries fails because of log inconsistency: decrement nextIndex and retry
-  fun ref send_update(
+  fun ref _send_update(
     node: RaftNode[A] ref,
     follower_id: USize,
     follower_info: (RaftNode[A] tag, LogIndex, LogIndex)
@@ -75,7 +88,7 @@ class LeaderState[A: Any val] is NodeState[A]
       else
         let new_follower_info = (follower, LogIndex.min_value().max(next_index - 1), match_index')
         _followers.update(follower_id, new_follower_info)?
-        send_update(node, follower_id, new_follower_info)
+        _send_update(node, follower_id, new_follower_info)
       end
     end
 

@@ -6,11 +6,12 @@ use "itertools"
 actor RaftNode[A: Any val]
   let name: String val
   var state: NodeState[A] = FollowerState[A]
+  let gateway: RaftGateway[A]
+  let nodes: Array[RaftNode[A] tag] = []
 
   let _timers: Timers = Timers
   var _rand: Rand
-  var _election_timer: (Timer tag | None) = None
-  var _heartbeat_timer: (Timer tag | None) = None
+  var _election_timer: Timer tag
 
   let log: Array[A] ref = []
   let log_terms: Array[Term val] ref = []
@@ -21,20 +22,24 @@ actor RaftNode[A: Any val]
   var commit_index: LogIndex = 0
   var last_applied: LogIndex = 0
 
-  new create(name': String val) =>
+  new create(gateway': RaftGateway[A], name': String val) =>
+    gateway = gateway'
     name = name'
     _rand = Rand.from_u64(name'.hash64())
-    restart_election_timer()
+
+    let timeout_ms = 150 + ((150 * U64.from[U8](_rand.u8())) / 255)
+    let timer: Timer iso = Timer(ElectionTimeoutHandler[A](this), timeout_ms * 1_000_000)
+    _election_timer = timer
+    _timers(consume timer)
+
+  be add_nodes(nodes': Array[RaftNode[A] tag] val) => nodes.append(nodes')
 
   fun ref restart_election_timer() =>
-    match _election_timer
-    | let timer: Timer tag => _timers.cancel(timer)
-    | None => None
-    end
+    _timers.cancel(_election_timer)
     let timeout_ms = 150 + ((150 * U64.from[U8](_rand.u8())) / 255)
-    //let timer: Timer iso = Timer(ElectionTimeoutHandler[A](this), timeout_ms * 1_000_000)
-    //_election_timer = timer
-    //_timers(consume timer)
+    let timer = Timer(ElectionTimeoutHandler[A](this), timeout_ms * 1_000_000)
+    _election_timer = timer
+    _timers(consume timer)
 
   fun get_last_log_idx(): LogIndex => log.size() - 1
   fun get_last_log_term(): Term => try log_terms(get_last_log_idx())? else 0 end
@@ -62,17 +67,26 @@ actor RaftNode[A: Any val]
       apply_input(last_applied + 1)
     end
 
+  be become_candidate() =>
+    state = CandidateState[A](this, nodes.values())
+
+  be process_commands(commands: Array[A] val) =>
+    Debug("Processing" + commands.size().string() + "commands!")
+    state.process_commands(this, commands)
+
   be append_reply(
     follower_id: USize,
     term: Term,
     success: Bool,
     match_index: LogIndex = -1
   ) =>
+    restart_election_timer()
     check_superceded(term)
     state.append_reply(this, follower_id, term, success, match_index)
     commit()
 
   be vote_reply(term: Term, vote_granted: Bool) =>
+    restart_election_timer()
     check_superceded(term)
     state.vote_reply(this, term, vote_granted)
 
@@ -85,6 +99,7 @@ actor RaftNode[A: Any val]
     entries: Array[A] val,
     leader_commit_index: LogIndex
   ) =>
+    restart_election_timer()
     check_superceded(term)
     state.append(this, leader, follower_id, term, prev_log_index, prev_log_term, entries, leader_commit_index)
     commit()
@@ -95,5 +110,6 @@ actor RaftNode[A: Any val]
     last_log_index: LogIndex,
     last_log_term: Term
   ) =>
+    restart_election_timer()
     check_superceded(term)
     state.request_vote(this, candidate, term, last_log_index, last_log_term)

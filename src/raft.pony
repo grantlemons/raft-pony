@@ -34,3 +34,8 @@ trait NodeState[A: Any val]
     term: Term,
     vote_granted: Bool
   ) => None
+
+  fun ref process_commands(
+    node: RaftNode[A] ref,
+    commands: Array[A] val = []
+  ) => None
