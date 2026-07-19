@@ -20,6 +20,3 @@ actor Main
         1_000_000_000 / commands_per_sec
       )
     )
-
-    cluster.dispose()
-    timers.dispose()
