@@ -25,6 +25,7 @@ class LeaderState[A: Any val] is NodeState[A]
     _timers(consume timer)
 
     process_commands(parent)
+    parent.gateway.set_leader(parent)
 
   fun ref restart_heartbeat_timer(node: RaftNode[A] ref) =>
     _timers.cancel(_heartbeat_timer)
@@ -145,7 +146,7 @@ class CandidateState[A: Any val] is NodeState[A]
 
   // If votes received from majority of servers: become leader
   fun ref vote_reply(node: RaftNode[A] ref, term: Term, vote_granted: Bool) =>
-    _votes = _votes + 1
+    if vote_granted then _votes = _votes + 1 end
 
     let consensus: Bool = _votes >= (((Votes.from[USize](_voters.size()) + 1) / 2) + 1)
     if consensus then

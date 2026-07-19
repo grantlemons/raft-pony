@@ -1,6 +1,6 @@
-type Term is U8
+type Term is USize
 type LogIndex is USize
-type Votes is U16
+type Votes is USize
 trait NodeState[A: Any val]
   fun ref append(
     node: RaftNode[A] ref, 

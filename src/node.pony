@@ -50,11 +50,11 @@ actor RaftNode[A: Any val]
   fun ref check_superceded(term: Term) =>
     if term > current_term then
       current_term = term
-    end
-    match state
-    | let _: FollowerState[A] => None
-    else
-      state = FollowerState[A]
+      match state
+      | let _: FollowerState[A] => None
+      else
+        state = FollowerState[A]
+      end
     end
 
   // Apply an input in the log to the managed state machine
@@ -68,10 +68,11 @@ actor RaftNode[A: Any val]
     end
 
   be become_candidate() =>
+    Debug(name + ": Became candidate")
     state = CandidateState[A](this, nodes.values())
 
   be process_commands(commands: Array[A] val) =>
-    Debug("Processing" + commands.size().string() + "commands!")
+    Debug(name + ": Processing " + commands.size().string() + " commands!")
     state.process_commands(this, commands)
 
   be append_reply(
@@ -86,6 +87,7 @@ actor RaftNode[A: Any val]
     commit()
 
   be vote_reply(term: Term, vote_granted: Bool) =>
+    Debug(name + ": Received vote: " + vote_granted.string())
     restart_election_timer()
     check_superceded(term)
     state.vote_reply(this, term, vote_granted)
