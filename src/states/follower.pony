@@ -32,12 +32,12 @@ class FollowerState[A: Any val, M: StateMachine[A]] is NodeState[A, M]
       end
 
     // Reply false if log doesn’t contain an entry at prevLogIndex whose term matches prevLogTerm
-    match node.get_log_entry(prev_log_index)
-    | None =>
+    match (prev_log_index, node.get_log_entry(prev_log_index))
+    | (let _: USize, None) =>
       leader.append_reply(follower_id, node.current_term, false)
       Debug(node.name + ": Failed to append, entry at prevLogIndex ("+prev_log_index.string()+") null.")
       return
-    | let term': Term if EmptyFuns.ne(term', prev_log_term) =>
+    | (let _: USize, let term': Term) if EmptyFuns.ne(term', prev_log_term) =>
       leader.append_reply(follower_id, node.current_term, false)
       Debug(node.name + ": Failed to append, term at prevLogIndex ("+prev_log_index.string()+") wrong. Term: " + term'.string() + " expected " + term.string())
       return
@@ -87,6 +87,8 @@ class FollowerState[A: Any val, M: StateMachine[A]] is NodeState[A, M]
     let not_voted_for_other = (node.voted_for is None) or (node.voted_for is candidate)
     let index_up_to_date = EmptyFuns.ge(last_log_index, node.get_last_log_idx())
     let term_up_to_date = EmptyFuns.ge(last_log_term, node.get_last_log_term())
+
+    Debug(node.name + ": Follower last term = " + node.get_last_log_term().string() + " Candidate last term = " + last_log_term.string())
     if not_voted_for_other and index_up_to_date and term_up_to_date then
       node.voted_for = candidate
       candidate.vote_reply(node.current_term, true)

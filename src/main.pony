@@ -16,8 +16,10 @@ actor Main
     timers(
       Timer(
         object is TimerNotify
+          var index: U64 = 0
           fun ref apply(timer: Timer ref, count: U64 val): Bool val =>
-            cluster.process_commands([count])
+            let old_index = index = index + 1
+            cluster.process_commands([old_index])
             true
         end,
         0,

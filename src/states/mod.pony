@@ -24,6 +24,7 @@ primitive EmptyFuns
   fun add(a: LogIndex, b: LogIndex): (USize | Empty) =>
     combine[USize, USize](a, b, { (av: USize, bv: USize) => av.add(bv) })
   fun sub(a: LogIndex, b: LogIndex): (USize | Empty) =>
+    if eq(a, 0) and gt(b, 0) then Empty end
     combine[USize, USize](a, b, { (av: USize, bv: USize) => av.sub(bv) })
   fun lt(a: LogIndex, b: LogIndex): Bool =>
     match (a, b)
@@ -34,6 +35,7 @@ primitive EmptyFuns
   fun le(a: LogIndex, b: LogIndex): Bool =>
     match (a, b)
     | (let a': USize, let b': USize) => a' <= b'
+    | (let _: Empty, let _: Empty) => true
     | (let _: Empty, let _: USize) => true
     else false
     end
@@ -46,6 +48,7 @@ primitive EmptyFuns
   fun ge(a: LogIndex, b: LogIndex): Bool =>
     match (a, b)
     | (let a': USize, let b': USize) => a' >= b'
+    | (let _: Empty, let _: Empty) => true
     | (let _: USize, let _: Empty) => true
     else false
     end

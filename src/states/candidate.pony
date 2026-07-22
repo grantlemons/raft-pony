@@ -47,7 +47,20 @@ class CandidateState[A: Any val, M: StateMachine[A]] is NodeState[A, M]
     match term
     | let term': USize =>
       if node.current_term <= term' then
+        Debug(node.name + ": Converting to follower! Term: " + term.string())
         node.state = FollowerState[A, M]
+        
+        // rerun on new follower
+        node.state.append(
+          node,
+          leader,
+          follower_id,
+          term,
+          prev_log_index,
+          prev_log_term,
+          entries,
+          leader_commit_index
+        )
       else
         leader.append_reply(follower_id, node.current_term, false)
       end

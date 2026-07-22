@@ -7,6 +7,7 @@ class ElectionTimeoutHandler[A: Any val, M: StateMachine[A]] is TimerNotify
 
   fun ref apply(timer: Timer ref, count: U64 val): Bool val =>
     _parent.become_candidate()
+    Debug("Election timer!")
     false
 
 class HeartbeatHandler[A: Any val, M: StateMachine[A]] is TimerNotify
@@ -15,4 +16,5 @@ class HeartbeatHandler[A: Any val, M: StateMachine[A]] is TimerNotify
 
   fun ref apply(timer: Timer ref, count: U64 val): Bool val =>
     _parent.process_commands(None)
+    Debug("Heartbeat!")
     true

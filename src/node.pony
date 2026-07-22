@@ -90,18 +90,14 @@ actor RaftNode[A: Any val, M: StateMachine[A]]
       end
     end
 
-  // Apply an input in the log to the managed state machine
-  be apply_input(idx: USize) =>
-    last_applied = idx
-    try
-      _state_machine.apply(log(idx)?)
-    else Debug("Unable to apply to state machine!")
-    end
-
   // If commitIndex > lastApplied: increment lastApplied, apply log[lastApplied] to state machine
   be commit() =>
     while EmptyFuns.gt(commit_index, last_applied) do
-      apply_input(last_applied + 1)
+      try
+        _state_machine.apply(log(last_applied + 1)?)
+      else Debug("Unable to apply to state machine!")
+      end
+      last_applied = last_applied + 1
     end
 
   be become_candidate() =>
@@ -132,7 +128,7 @@ actor RaftNode[A: Any val, M: StateMachine[A]]
     follower_id: USize,
     term: Term,
     prev_log_index: LogIndex,
-    prev_log_term: Term,
+    prev_log_term: (Term | Empty),
     entries: (Array[A] val | None),
     leader_commit_index: LogIndex
   ) =>

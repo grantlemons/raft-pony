@@ -73,8 +73,19 @@ class LeaderState[A: Any val, M: StateMachine[A]] is NodeState[A, M]
       else None
       end
 
-    let prev_index = next_index - 1
-    let prev_term = try node.log_terms(prev_index)? else -1 end
+    let prev_index: LogIndex = if next_index == 0 then Empty else next_index - 1 end
+    let prev_term: (Term | Empty) = 
+      match prev_index
+      | Empty => Empty
+      else
+        match node.get_log_term(prev_index)
+        | let term: Term => term
+        | None =>
+          Debug(node.name + ": ERROR empty log term for non-empty index " + prev_index.string())
+          return
+        end
+      end
+
     follower.append(
       node,
       follower_id,
@@ -128,7 +139,7 @@ class LeaderState[A: Any val, M: StateMachine[A]] is NodeState[A, M]
           let is_current_term: Bool =
             try node.log_terms(n)? == node.current_term
             else
-              Debug(node.name + ": ERROR N is not a valid index in log terms!")
+              Debug(node.name + ": ERROR "+ n.string() +" is not a valid index in log terms!")
               return
             end
           if consensus and is_current_term then
@@ -144,7 +155,8 @@ class LeaderState[A: Any val, M: StateMachine[A]] is NodeState[A, M]
         end
       end
     else
-      let new_follower_info = (follower, USize.min_value().max(next_index - 1), match_index')
+      Debug(node.name + ": Decrementing next index to " + (next_index.max(1) - 1).string())
+      let new_follower_info = (follower, next_index.max(1) - 1, match_index')
       try _followers.update(follower_id, new_follower_info)?
       else
         Debug(node.name + ": ERROR cannot update follower at index " + follower_id.string())
