@@ -38,16 +38,19 @@ class CandidateState[A: Any val, M: StateMachine[A]] is NodeState[A, M]
     follower_id: USize,
     term: Term,
     prev_log_index: LogIndex,
-    prev_log_term: Term,
+    prev_log_term: (Term | Empty),
     entries: (ReadSeq[A] val | None),
     leader_commit_index: LogIndex
   ) =>
     // Consider a new leader to be one of the current term or later.
     // This accounts for the current term being the previous term + 1
-    if term >= node.current_term then
-      node.state = FollowerState[A, M]
-    else
-      leader.append_reply(follower_id, node.current_term, false)
+    match term
+    | let term': USize =>
+      if node.current_term <= term' then
+        node.state = FollowerState[A, M]
+      else
+        leader.append_reply(follower_id, node.current_term, false)
+      end
     end
 
   // If votes received from majority of servers: become leader

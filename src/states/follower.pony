@@ -10,7 +10,7 @@ class FollowerState[A: Any val, M: StateMachine[A]] is NodeState[A, M]
     follower_id: USize,
     term: Term,
     prev_log_index: LogIndex,
-    prev_log_term: Term,
+    prev_log_term: (Term | Empty),
     entries': (ReadSeq[A] val | None),
     leader_commit_index: LogIndex
   ) =>
@@ -22,6 +22,7 @@ class FollowerState[A: Any val, M: StateMachine[A]] is NodeState[A, M]
       leader.append_reply(follower_id, node.current_term, false)
       return
     end
+
     let entries =
       match entries'
       | let seq: ReadSeq[A] val if seq.size() != 0 => seq
@@ -31,17 +32,15 @@ class FollowerState[A: Any val, M: StateMachine[A]] is NodeState[A, M]
       end
 
     // Reply false if log doesn’t contain an entry at prevLogIndex whose term matches prevLogTerm
-    if prev_log_index != -1 then
-      match node.get_log_term(prev_log_index)
-      | None =>
-        leader.append_reply(follower_id, node.current_term, false)
-        Debug(node.name + ": Failed to append, entry at prevLogIndex ("+prev_log_index.string()+") null.")
-        return
-      | let term': Term if term' != prev_log_term =>
-        leader.append_reply(follower_id, node.current_term, false)
-        Debug(node.name + ": Failed to append, term at prevLogIndex ("+prev_log_index.string()+") wrong. Term: " + term'.string() + " expected " + term.string())
-        return
-      end
+    match node.get_log_entry(prev_log_index)
+    | None =>
+      leader.append_reply(follower_id, node.current_term, false)
+      Debug(node.name + ": Failed to append, entry at prevLogIndex ("+prev_log_index.string()+") null.")
+      return
+    | let term': Term if EmptyFuns.ne(term', prev_log_term) =>
+      leader.append_reply(follower_id, node.current_term, false)
+      Debug(node.name + ": Failed to append, term at prevLogIndex ("+prev_log_index.string()+") wrong. Term: " + term'.string() + " expected " + term.string())
+      return
     end
 
     // If an existing entry conflicts with a new one (same index but different terms), delete the existing entry and all that follow it
@@ -53,12 +52,16 @@ class FollowerState[A: Any val, M: StateMachine[A]] is NodeState[A, M]
     end
 
     // Append any new entries not already in the log
-    let num_already_included = node.get_last_log_idx() - prev_log_index
+    let num_already_included = 
+      match prev_log_index
+      | let prev_idx': USize => prev_idx' + 1
+      else 0
+      end
     node.log.append(entries, num_already_included)
     node.log_terms.concat(Iter[Term].repeat_value(term).take(entries.size() - num_already_included))
 
-    if leader_commit_index > node.commit_index then
-      node.commit_index = leader_commit_index.min(node.get_last_log_idx())
+    if EmptyFuns.gt(leader_commit_index, node.commit_index) then
+      node.commit_index = EmptyFuns.min(leader_commit_index, node.get_last_log_idx())
     end
 
     leader.append_reply(follower_id, node.current_term, true, prev_log_index + entries.size())
@@ -69,7 +72,7 @@ class FollowerState[A: Any val, M: StateMachine[A]] is NodeState[A, M]
     candidate: RaftNode[A, M] tag,
     term: Term,
     last_log_index: LogIndex,
-    last_log_term: Term
+    last_log_term: (Term | Empty)
   ) =>
     if node.rand.u8() == 0 then
       Debug(node.name + ": Simulating dropped vote message")
@@ -81,9 +84,10 @@ class FollowerState[A: Any val, M: StateMachine[A]] is NodeState[A, M]
     end
 
     // If votedFor is null or candidateId, and candidate’s log is at least as up-to-date as receiver’s log, grant vote
-    let not_voted = node.voted_for is None
-    let up_to_date = last_log_index >= node.get_last_log_idx()
-    if not_voted or up_to_date then
+    let not_voted_for_other = (node.voted_for is None) or (node.voted_for is candidate)
+    let index_up_to_date = EmptyFuns.ge(last_log_index, node.get_last_log_idx())
+    let term_up_to_date = EmptyFuns.ge(last_log_term, node.get_last_log_term())
+    if not_voted_for_other and index_up_to_date and term_up_to_date then
       node.voted_for = candidate
       candidate.vote_reply(node.current_term, true)
     else

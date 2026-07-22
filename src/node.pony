@@ -24,8 +24,8 @@ actor RaftNode[A: Any val, M: StateMachine[A]]
 
   var current_term: Term = 0
   var voted_for: (RaftNode[A, M] tag | None) = None
-  var commit_index: LogIndex = 0
-  var last_applied: LogIndex = 0
+  var commit_index: LogIndex = Empty
+  var last_applied: LogIndex = Empty
 
   let _state_machine: StateMachine[A] tag
 
@@ -54,10 +54,29 @@ actor RaftNode[A: Any val, M: StateMachine[A]]
     _election_timer = timer
     _timers(consume timer)
 
-  fun get_last_log_idx(): LogIndex => log.size() - 1
-  fun get_last_log_term(): Term => try log_terms(get_last_log_idx())? else 0 end
-  fun get_log_term(idx: LogIndex): (Term | None) => try log_terms(idx)? end
-  fun get_log_votes(idx: LogIndex): (Votes | None) => try log_votes(idx)? end
+  fun get_last_log_idx(): LogIndex =>
+    let res = log.size() - 1
+    if res == 0 then Empty end
+    res
+  fun get_last_log_term(): (Term | Empty) =>
+    match get_last_log_idx()
+    | let i: USize val =>
+      try log_terms(i)? else Empty end
+    else Empty
+    end
+  fun get_log_entry(idx: LogIndex): (A | None) =>
+    match idx
+    | let idx': USize => try log(idx')? end
+    end
+  fun get_log_term(idx: LogIndex): (Term | None) =>
+    match idx
+    | let idx': USize => try log_terms(idx')? end
+    end
+  fun get_log_votes(idx: LogIndex): (Votes | None) => 
+    match idx
+    | let idx': USize => try log_votes(idx')? end
+    end
+
 
   // If RPC request or response contains term T > currentTerm: set currentTerm = T, convert to follower
   fun ref check_superceded(term: Term) =>
@@ -72,7 +91,7 @@ actor RaftNode[A: Any val, M: StateMachine[A]]
     end
 
   // Apply an input in the log to the managed state machine
-  be apply_input(idx: LogIndex) =>
+  be apply_input(idx: USize) =>
     last_applied = idx
     try
       _state_machine.apply(log(idx)?)
@@ -81,7 +100,7 @@ actor RaftNode[A: Any val, M: StateMachine[A]]
 
   // If commitIndex > lastApplied: increment lastApplied, apply log[lastApplied] to state machine
   be commit() =>
-    while commit_index > last_applied do
+    while EmptyFuns.gt(commit_index, last_applied) do
       apply_input(last_applied + 1)
     end
 
@@ -96,7 +115,7 @@ actor RaftNode[A: Any val, M: StateMachine[A]]
     follower_id: USize,
     term: Term,
     success: Bool,
-    match_index: LogIndex = -1
+    match_index: LogIndex = Empty
   ) =>
     restart_election_timer()
     check_superceded(term)
@@ -126,7 +145,7 @@ actor RaftNode[A: Any val, M: StateMachine[A]]
     candidate: RaftNode[A, M] tag,
     term: Term,
     last_log_index: LogIndex,
-    last_log_term: Term
+    last_log_term: (Term | Empty)
   ) =>
     restart_election_timer()
     check_superceded(term)

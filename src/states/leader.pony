@@ -2,9 +2,10 @@ use ".."
 use "time"
 use "itertools"
 use "debug"
+use "collections"
 
 class LeaderState[A: Any val, M: StateMachine[A]] is NodeState[A, M]
-  let _followers: Array[(RaftNode[A, M] tag, LogIndex, LogIndex)] ref
+  let _followers: Array[(RaftNode[A, M] tag, USize, LogIndex)] ref
   let _timers: Timers = Timers
   var _heartbeat_timer: Timer tag
 
@@ -13,10 +14,10 @@ class LeaderState[A: Any val, M: StateMachine[A]] is NodeState[A, M]
   new create(parent: RaftNode[A, M] ref, nodes: Iterator[RaftNode[A, M] tag] ref) =>
     _followers = Iter[RaftNode[A, M] tag](nodes)
       .filter({(node: RaftNode[A, M] tag) => not (node is parent)})
-      .map[(RaftNode[A, M] tag, LogIndex, LogIndex)]({
-        (node: RaftNode[A, M] tag) => (node, parent.get_last_log_idx() + 1, 0)
+      .map[(RaftNode[A, M] tag, USize, LogIndex)]({
+        (node: RaftNode[A, M] tag) => (node, parent.get_last_log_idx() + 1, Empty)
       })
-      .collect(Array[(RaftNode[A, M] tag, LogIndex, LogIndex)])
+      .collect(Array[(RaftNode[A, M] tag, USize, LogIndex)])
 
     let timer: Timer iso = Timer(HeartbeatHandler[A, M](parent), 100_000_000, 100_000_000)
     _heartbeat_timer = timer
@@ -55,14 +56,14 @@ class LeaderState[A: Any val, M: StateMachine[A]] is NodeState[A, M]
   fun ref _send_update(
     node: RaftNode[A, M] ref,
     follower_id: USize,
-    follower_info: (RaftNode[A, M] tag, LogIndex, LogIndex)
+    follower_info: (RaftNode[A, M] tag, USize, LogIndex)
   ) =>
     (let follower, let next_index, let match_index) = follower_info
 
     let sendable_entries =
       if node.log.size() > next_index then
         let s: Array[A] iso = Array[A](node.log.size() - next_index)
-        if node.get_last_log_idx() >= next_index then
+        if EmptyFuns.ge(node.get_last_log_idx(), next_index) then
           let entries = node.log.slice(next_index)
           for entry in entries.values() do
             s.push(entry)
@@ -96,17 +97,58 @@ class LeaderState[A: Any val, M: StateMachine[A]] is NodeState[A, M]
       Debug(node.name + ": Simulating dropped append reply")
       return
     end
-    try
-      (
-        let follower: RaftNode[A, M] tag,
-        let next_index: LogIndex,
-        let match_index': LogIndex
-      ) = _followers(follower_id)?
-      if success then
-        _followers.update(follower_id, (follower, match_index + 1, match_index))?
+    (
+      let follower: RaftNode[A, M] tag,
+      let next_index: USize,
+      let match_index': LogIndex
+    ) = try _followers(follower_id)?
+        else
+          Debug(node.name + ": ERROR cannot find follower at index " + follower_id.string())
+          return
+        end
+    if success then
+      try _followers.update(follower_id, (follower, match_index + 1, match_index))?
       else
-        let new_follower_info = (follower, LogIndex.min_value().max(next_index - 1), match_index')
-        _followers.update(follower_id, new_follower_info)?
-        _send_update(node, follower_id, new_follower_info)
+        Debug(node.name + ": ERROR cannot update follower at index " + follower_id.string())
+        return
       end
+
+      // If there exists an N such that N > commitIndex, a majority of matchIndex[i] ≥ N, and log[N].term == currentTerm: set commitIndex = N 
+
+      // The N cannot become larger than new match_index update
+      match match_index
+      | let match_index'': USize =>
+        for n in Reverse(match_index'', node.commit_index + 1) do
+          let num_greater: Votes = 
+            Iter[(RaftNode[A, M] tag, USize, LogIndex)](_followers.values())
+              .map[LogIndex]({(f) => f._3}) // match indexes
+              .filter({(idx) => EmptyFuns.ge(idx, n)})
+              .count() + 1
+          let consensus: Bool = num_greater >= (((Votes.from[USize](_followers.size()) + 1) / 2) + 1)
+          let is_current_term: Bool =
+            try node.log_terms(n)? == node.current_term
+            else
+              Debug(node.name + ": ERROR N is not a valid index in log terms!")
+              return
+            end
+          if consensus and is_current_term then
+            node.commit_index = n
+            Debug(node.name + ": COMMIT INDEX = " + n.string())
+            Debug(
+              Iter[(RaftNode[A, M] tag, USize, LogIndex)](_followers.values())
+                .map[LogIndex]({(f) => f._3}) // match indexes
+                .collect(Array[LogIndex])
+            )
+            return // SUCCESS!
+          end
+        end
+      end
+    else
+      let new_follower_info = (follower, USize.min_value().max(next_index - 1), match_index')
+      try _followers.update(follower_id, new_follower_info)?
+      else
+        Debug(node.name + ": ERROR cannot update follower at index " + follower_id.string())
+        return
+      end
+      _send_update(node, follower_id, new_follower_info)
     end

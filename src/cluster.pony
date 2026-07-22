@@ -1,10 +1,6 @@
 use "collections"
 use "debug"
 
-type Term is USize
-type LogIndex is USize
-type Votes is USize
-
 actor RaftCluster[A: Any val, M: StateMachine[A]]
   var _leader: (RaftNode[A, M] tag | None) = None
   var _command_queue: Array[A] iso = []
