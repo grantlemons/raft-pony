@@ -2,6 +2,7 @@ use ".."
 use "debug"
 use "collections"
 use "itertools"
+use "assert"
 
 class FollowerState[A: Any val, M: StateMachine[A]] is NodeState[A, M]
   fun ref append(
@@ -54,9 +55,19 @@ class FollowerState[A: Any val, M: StateMachine[A]] is NodeState[A, M]
     // Append any new entries not already in the log
     let num_already_included = 
       match prev_log_index
-      | let prev_idx': USize => prev_idx' + 1
+      | let prev_idx': USize => node.log.size() - prev_idx' - 1
       else 0
       end
+
+    if entries.size() < num_already_included then
+      Debug("UH OH")
+      Debug("Log size = " + node.log.size().string())
+      Debug("Prev index = " + prev_log_index.string())
+      Debug(entries.size().string() + " < " + num_already_included.string())
+    end
+
+    // avoid the concat repeated if there are problems
+    try Assert(node.log.size() == node.log_terms.size(), "Log array lengths out of sync!")? else return end
     node.log.append(entries, num_already_included)
     node.log_terms.concat(Iter[Term].repeat_value(term).take(entries.size() - num_already_included))
 
@@ -65,7 +76,6 @@ class FollowerState[A: Any val, M: StateMachine[A]] is NodeState[A, M]
     end
 
     leader.append_reply(follower_id, node.current_term, true, prev_log_index + entries.size())
-    Debug(node.name + ": Success! #Entries: " + entries.size().string() + " New match: " + (prev_log_index + entries.size()).string())
 
   fun ref request_vote(
     node: RaftNode[A, M] ref,
@@ -88,7 +98,6 @@ class FollowerState[A: Any val, M: StateMachine[A]] is NodeState[A, M]
     let index_up_to_date = EmptyFuns.ge(last_log_index, node.get_last_log_idx())
     let term_up_to_date = EmptyFuns.ge(last_log_term, node.get_last_log_term())
 
-    Debug(node.name + ": Follower last term = " + node.get_last_log_term().string() + " Candidate last term = " + last_log_term.string())
     if not_voted_for_other and index_up_to_date and term_up_to_date then
       node.voted_for = candidate
       candidate.vote_reply(node.current_term, true)

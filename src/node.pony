@@ -77,7 +77,6 @@ actor RaftNode[A: Any val, M: StateMachine[A]]
     | let idx': USize => try log_votes(idx')? end
     end
 
-
   // If RPC request or response contains term T > currentTerm: set currentTerm = T, convert to follower
   fun ref check_superceded(term: Term) =>
     if term > current_term then

@@ -82,6 +82,7 @@ class LeaderState[A: Any val, M: StateMachine[A]] is NodeState[A, M]
         | let term: Term => term
         | None =>
           Debug(node.name + ": ERROR empty log term for non-empty index " + prev_index.string())
+          Debug(node.name + ": Log size " + node.log.size().string() + " Log terms size: " + node.log_terms.size().string())
           return
         end
       end
@@ -144,7 +145,6 @@ class LeaderState[A: Any val, M: StateMachine[A]] is NodeState[A, M]
             end
           if consensus and is_current_term then
             node.commit_index = n
-            Debug(node.name + ": COMMIT INDEX = " + n.string())
             Debug(
               Iter[(RaftNode[A, M] tag, USize, LogIndex)](_followers.values())
                 .map[LogIndex]({(f) => f._3}) // match indexes
