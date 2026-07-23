@@ -97,6 +97,33 @@ class LeaderState[A: Any val, M: StateMachine[A]] is NodeState[A, M]
       node.commit_index
     )
 
+  // If there exists an N such that N > commit_index, a majority of match_index[i] ≥ N, and log[N].term == current_term: set commit_index = N 
+  // The N cannot become larger than new match_index update
+  fun ref _check_consensus(
+    node: RaftNode[A, M] ref,
+    match_index: USize
+  ): None ? =>
+    for n in Reverse(match_index, node.commit_index + 1) do
+      let num_greater: Votes = 
+        Iter[(RaftNode[A, M] tag, USize, LogIndex)](_followers.values())
+          .map[LogIndex]({(f) => f._3}) // match indexes
+          .filter({(idx) => EmptyFuns.ge(idx, n)})
+          .count() + 1
+
+      let majority: USize = ((Votes.from[USize](_followers.size()) + 1) / 2) + 1
+      let consensus: Bool = num_greater >= majority
+      let is_current_term: Bool =
+        try node.log_terms(n)? == node.current_term
+        else
+          Debug(node.name + ": ERROR "+ n.string() +" is not a valid index in log terms!")
+          error
+        end
+
+      if consensus and is_current_term then
+        node.commit_index = n // SUCCESS!
+      end
+    end
+
   // If AppendEntries fails because of log inconsistency: decrement nextIndex and retry
   fun ref append_reply(
     node: RaftNode[A, M] ref,
@@ -109,58 +136,32 @@ class LeaderState[A: Any val, M: StateMachine[A]] is NodeState[A, M]
       Debug(node.name + ": Simulating dropped append reply")
       return
     end
-    (
-      let follower: RaftNode[A, M] tag,
-      let next_index: USize,
-      let match_index': LogIndex
-    ) = try _followers(follower_id)?
-        else
-          Debug(node.name + ": ERROR cannot find follower at index " + follower_id.string())
-          return
-        end
+
+    let info =
+      try _followers(follower_id)?
+      else
+        Debug(node.name + ": ERROR cannot find follower at index " + follower_id.string())
+        return
+      end
+
     if success then
-      try _followers.update(follower_id, (follower, match_index + 1, match_index))?
+      try _followers.update(follower_id, (info._1, match_index + 1, match_index))?
       else
         Debug(node.name + ": ERROR cannot update follower at index " + follower_id.string())
         return
       end
 
-      // If there exists an N such that N > commitIndex, a majority of matchIndex[i] ≥ N, and log[N].term == currentTerm: set commitIndex = N 
-
-      // The N cannot become larger than new match_index update
       match match_index
-      | let match_index'': USize =>
-        for n in Reverse(match_index'', node.commit_index + 1) do
-          let num_greater: Votes = 
-            Iter[(RaftNode[A, M] tag, USize, LogIndex)](_followers.values())
-              .map[LogIndex]({(f) => f._3}) // match indexes
-              .filter({(idx) => EmptyFuns.ge(idx, n)})
-              .count() + 1
-          let consensus: Bool = num_greater >= (((Votes.from[USize](_followers.size()) + 1) / 2) + 1)
-          let is_current_term: Bool =
-            try node.log_terms(n)? == node.current_term
-            else
-              Debug(node.name + ": ERROR "+ n.string() +" is not a valid index in log terms!")
-              return
-            end
-          if consensus and is_current_term then
-            node.commit_index = n
-            Debug(
-              Iter[(RaftNode[A, M] tag, USize, LogIndex)](_followers.values())
-                .map[LogIndex]({(f) => f._3}) // match indexes
-                .collect(Array[LogIndex])
-            )
-            return // SUCCESS!
-          end
-        end
+      | let idx: USize => try _check_consensus(node, idx)? else return end
       end
     else
-      Debug(node.name + ": Decrementing next index to " + (next_index.max(1) - 1).string())
-      let new_follower_info = (follower, next_index.max(1) - 1, match_index')
-      try _followers.update(follower_id, new_follower_info)?
+      Debug(node.name + ": Decrementing next index to " + (info._2.max(1) - 1).string())
+
+      let new_info = (info._1, info._2.max(1) - 1, info._3)
+      try _followers.update(follower_id, new_info)?
       else
         Debug(node.name + ": ERROR cannot update follower at index " + follower_id.string())
         return
       end
-      _send_update(node, follower_id, new_follower_info)
+      _send_update(node, follower_id, new_info)
     end

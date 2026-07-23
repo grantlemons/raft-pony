@@ -5,6 +5,44 @@ use "itertools"
 use "assert"
 
 class FollowerState[A: Any val, M: StateMachine[A]] is NodeState[A, M]
+  fun ref _update_log(
+    node: RaftNode[A, M] ref,
+    term: Term,
+    prev_log_index: LogIndex,
+    entries: ReadSeq[A] val
+
+  ): None ? =>
+    // If this is a late arrival and has been passed by the log, return
+    if node.log.size() > (prev_log_index + 1 + entries.size()) then
+      return
+    end
+
+    // If an existing entry conflicts with a new one (same index but different terms), delete the existing entry and all that follow it
+    for idx in Range(prev_log_index + 1, node.log.size() + entries.size()) do
+      match node.get_log_term(idx)
+      | let log_term: Term if log_term != term => node.log.truncate(idx)
+      | None => break
+      end
+    end
+
+    // Append any new entries not already in the log
+    let num_already_included =
+      match prev_log_index
+      | let prev_idx': USize => node.log.size() - prev_idx' - 1
+      else 0
+      end
+
+    if entries.size() < num_already_included then
+      Debug("UH OH")
+      Debug(entries.size().string() + " < " + num_already_included.string())
+      error
+    end
+
+    // avoid the concat repeated if there are problems
+    try Assert(node.log.size() == node.log_terms.size(), "Log array lengths out of sync!")? else error end
+    node.log.append(entries, num_already_included)
+    node.log_terms.concat(Iter[Term].repeat_value(term).take(entries.size() - num_already_included))
+
   fun ref append(
     node: RaftNode[A, M] ref,
     leader: RaftNode[A, M] tag,
@@ -38,44 +76,19 @@ class FollowerState[A: Any val, M: StateMachine[A]] is NodeState[A, M]
       leader.append_reply(follower_id, node.current_term, false)
       Debug(node.name + ": Failed to append, entry at prevLogIndex ("+prev_log_index.string()+") null.")
       return
-    | (let _: USize, let term': Term) if EmptyFuns.ne(term', prev_log_term) =>
+    | (let prev_term: USize, let term': Term) if term' != prev_term =>
       leader.append_reply(follower_id, node.current_term, false)
       Debug(node.name + ": Failed to append, term at prevLogIndex ("+prev_log_index.string()+") wrong. Term: " + term'.string() + " expected " + term.string())
       return
     end
 
-    // If an existing entry conflicts with a new one (same index but different terms), delete the existing entry and all that follow it
-    for idx in Range(node.log.size(), node.log.size() + entries.size()) do
-      match node.get_log_term(idx)
-      | let log_term: Term if log_term != term =>
-        node.log.truncate(idx)
-      end
-    end
-
-    // Append any new entries not already in the log
-    let num_already_included = 
-      match prev_log_index
-      | let prev_idx': USize => node.log.size() - prev_idx' - 1
-      else 0
-      end
-
-    if entries.size() < num_already_included then
-      Debug("UH OH")
-      Debug("Log size = " + node.log.size().string())
-      Debug("Prev index = " + prev_log_index.string())
-      Debug(entries.size().string() + " < " + num_already_included.string())
-    end
-
-    // avoid the concat repeated if there are problems
-    try Assert(node.log.size() == node.log_terms.size(), "Log array lengths out of sync!")? else return end
-    node.log.append(entries, num_already_included)
-    node.log_terms.concat(Iter[Term].repeat_value(term).take(entries.size() - num_already_included))
+    try _update_log(node, term, prev_log_index, entries)? else return end
 
     if EmptyFuns.gt(leader_commit_index, node.commit_index) then
       node.commit_index = EmptyFuns.min(leader_commit_index, node.get_last_log_idx())
     end
 
-    leader.append_reply(follower_id, node.current_term, true, prev_log_index + entries.size())
+    leader.append_reply(follower_id, node.current_term, true, EmptyFuns.sub(node.log.size(), 1))
 
   fun ref request_vote(
     node: RaftNode[A, M] ref,

@@ -3,6 +3,7 @@ use ".."
 class val Empty is Stringable
   fun box string(): String iso^ => "Empty".string()
   fun add(value: USize val): USize => value - 1
+  fun sub(value: USize val): Empty => Empty
   fun eq(other: Empty): Bool => true
 
 primitive EmptyFuns
@@ -24,14 +25,18 @@ primitive EmptyFuns
   fun add(a: LogIndex, b: LogIndex): (USize | Empty) =>
     combine[USize, USize](a, b, { (av: USize, bv: USize) => av.add(bv) })
   fun sub(a: LogIndex, b: LogIndex): (USize | Empty) =>
-    if eq(a, 0) and gt(b, 0) then Empty end
-    combine[USize, USize](a, b, { (av: USize, bv: USize) => av.sub(bv) })
+    if eq(a, 0) and gt(b, 0)
+    then Empty
+    else combine[USize, USize](a, b, { (av: USize, bv: USize) => av.sub(bv) })
+    end
+
   fun lt(a: LogIndex, b: LogIndex): Bool =>
     match (a, b)
     | (let a': USize, let b': USize) => a' < b'
     | (let _: Empty, let _: USize) => true
     else false
     end
+
   fun le(a: LogIndex, b: LogIndex): Bool =>
     match (a, b)
     | (let a': USize, let b': USize) => a' <= b'
@@ -39,12 +44,14 @@ primitive EmptyFuns
     | (let _: Empty, let _: USize) => true
     else false
     end
+
   fun gt(a: LogIndex, b: LogIndex): Bool =>
     match (a, b)
     | (let a': USize, let b': USize) => a' > b'
     | (let _: USize, let _: Empty) => true
     else false
     end
+
   fun ge(a: LogIndex, b: LogIndex): Bool =>
     match (a, b)
     | (let a': USize, let b': USize) => a' >= b'
@@ -52,6 +59,7 @@ primitive EmptyFuns
     | (let _: USize, let _: Empty) => true
     else false
     end
+
   fun eq(a: LogIndex, b: LogIndex): Bool =>
     match (a, b)
     | (let a': USize, let b': USize) => a' == b'
@@ -59,25 +67,24 @@ primitive EmptyFuns
     else false
     end
   fun ne(a: LogIndex, b: LogIndex): Bool => not eq(a, b)
+
   fun compare(a: LogIndex, b: LogIndex): Compare =>
     if eq(a, b) then
       Equal
-    elseif lt(a, b) then
-      Less
-    else
-      Greater
+    elseif lt(a, b) then Less
+    else Greater
     end
+
   fun min(a: LogIndex, b: LogIndex): LogIndex =>
     match compare(a, b)
     | Less => a
-    else
-     b
+    else b
     end
+
   fun max(a: LogIndex, b: LogIndex): LogIndex =>
     match compare(a, b)
     | Greater => a
-    else
-     b
+    else b
     end
 
 type Term is USize
